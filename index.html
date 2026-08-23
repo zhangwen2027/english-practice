@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分组单词/短语练习</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 600px; margin: 0 auto; padding: 16px; background:#f7f9fc; color:#222; }
+  h1 { font-size: 22px; }
+  .card { background:#fff; border-radius:14px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:16px; }
+  .prompt { font-size: 20px; margin-bottom: 12px; }
+  .en { color:#0b57d0; font-weight:600; }
+  .btn { display:inline-block; margin: 6px 8px 6px 0; padding: 10px 14px; border:none; border-radius:10px; background:#e8f0fe; color:#0b57d0; font-size:15px; cursor:pointer; }
+  .btn.primary { background:#0b57d0; color:#fff; }
+  input[type=text], input[type=number], select { width:100%; padding:12px; font-size:16px; border:1px solid #ccc; border-radius:10px; margin:8px 0; box-sizing:border-box; }
+  .feedback { min-height: 24px; margin: 8px 0; font-weight:600; }
+  .ok { color:#188038; }
+  .bad { color:#d93025; }
+  .muted { color:#666; font-size:14px; }
+  details { margin-top:12px; }
+  textarea { width:100%; height:200px; font-size:14px; }
+  label { display:block; margin:6px 0; }
+</style>
+</head>
+<body>
+<h1>📚 分组单词/短语练习</h1>
+
+<div id="setup" class="card">
+  <p class="muted">每轮数量：</p>
+  <label>单词 <input id="wordCount" type="number" value="5" min="1"></label>
+  <label>短语 <input id="phraseCount" type="number" value="3" min="1"></label>
+
+  <p class="muted">选择要练习的分组：</p>
+  <select id="groupSelect"></select>
+
+  <button id="startBtn" class="btn primary">开始练习</button>
+
+  <details>
+    <summary>编辑词库（每行：组号 | 类型 | 英文 | 中文）</summary>
+    <textarea id="lexicon"></textarea>
+    <button id="saveLexicon" class="btn">保存词库</button>
+    <p class="muted">type 填 word 或 phrase，例如：<br>1 | word | apple | 苹果<br>1 | phrase | get up | 起床<br>组号可用数字或文字，如 Unit1-01</p>
+  </details>
+</div>
+
+<div id="practice" class="card" hidden>
+  <div id="progress" class="muted"></div>
+  <div id="card">
+    <div id="prompt" class="prompt"></div>
+    <div>
+      <button id="speakBtn" class="btn">🔊 播放英文</button>
+      <button id="recordBtn" class="btn">🎤 录我的发音</button>
+      <button id="playMyBtn" class="btn" hidden>▶️ 播放我的发音</button>
+    </div>
+    <input id="answer" type="text" autocomplete="off" placeholder="在这里输入答案..." />
+    <button id="submitBtn" class="btn primary">提交</button>
+    <div id="feedback" class="feedback"></div>
+  </div>
+  <button id="nextBtn" class="btn primary" hidden>下一题 →</button>
+</div>
+
+<script>
+// ---------- 默认词库（示例） ----------
+const DEFAULT_LEXICON = [
+  {group:'1', type:'word', en:'apple', zh:'苹果'},
+  {group:'1', type:'word', en:'student', zh:'学生'},
+  {group:'1', type:'word', en:'beautiful', zh:'美丽的'},
+  {group:'1', type:'word', en:'because', zh:'因为'},
+  {group:'1', type:'word', en:'usually', zh:'通常'},
+  {group:'1', type:'phrase', en:'get up', zh:'起床'},
+  {group:'1', type:'phrase', en:'look after', zh:'照顾'},
+  {group:'1', type:'phrase', en:'be good at', zh:'擅长'},
+  {group:'2', type:'word', en:'different', zh:'不同的'},
+  {group:'2', type:'word', en:'environment', zh:'环境'},
+  {group:'2', type:'word', en:'important', zh:'重要的'},
+  {group:'2', type:'phrase', en:'take part in', zh:'参加'}
+];
+
+let lexicon = loadLexicon();
+
+function loadLexicon(){
+  try{
+    const raw = localStorage.getItem('lexicon_v2');
+    if(raw){
+      const arr = JSON.parse(raw);
+      // 兼容旧数据，没有group的默认归为'未分组'
+      return arr.map(item => ({...item, group: item.group || '未分组'}));
+    }
+  }catch(e){}
+  return DEFAULT_LEXICON;
+}
+
+function saveLexiconToStorage(){
+  localStorage.setItem('lexicon_v2', JSON.stringify(lexicon));
+}
+
+function populateGroupSelect(){
+  const groups = [...new Set(lexicon.map(i => i.group))].sort();
+  const sel = document.getElementById('groupSelect');
+  sel.innerHTML = '';
+  if(groups.length === 0){
+    sel.innerHTML = '<option value="">暂无分组</option>';
+    return;
+  }
+  groups.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g;
+    opt.textContent = g;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('saveLexicon').addEventListener('click', ()=>{
+  const text = document.getElementById('lexicon').value.trim();
+  const lines = text.split('\n').map(s=>s.trim()).filter(Boolean);
+  const newLex = [];
+  for(const line of lines){
+    const parts = line.split('|').map(s=>s.trim());
+    if(parts.length >= 4){
+      newLex.push({
+        group: parts[0],
+        type: parts[1] === 'phrase' ? 'phrase' : 'word',
+        en: parts[2],
+        zh: parts[3]
+      });
+    }
+  }
+  if(newLex.length){
+    lexicon = newLex;
+    saveLexiconToStorage();
+    populateGroupSelect();
+    fillLexiconEditor();
+    alert('已保存 '+newLex.length+' 条，共 '+new Set(newLex.map(i=>i.group)).size+' 个分组');
+  } else {
+    alert('格式不正确，请每行：组号 | 类型 | 英文 | 中文');
+  }
+});
+
+function fillLexiconEditor(){
+  document.getElementById('lexicon').value = lexicon.map(i=>`${i.group} | ${i.type} | ${i.en} | ${i.zh}`).join('\n');
+}
+
+// 初始化
+fillLexiconEditor();
+populateGroupSelect();
+
+// ---------- 工具 ----------
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function normalEn(s){ return s.trim().toLowerCase().replace(/\s+/g,' '); }
+function normalZh(s){ return s.trim().replace(/\s+/g,''); }
+
+// ---------- 发音 ----------
+function speakEn(text){
+  if(!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 0.9;
+  speechSynthesis.speak(u);
+}
+
+// ---------- 录音 ----------
+let mediaRecorder = null;
+let chunks = [];
+let myAudioURL = null;
+
+async function toggleRecord(){
+  const recordBtn = document.getElementById('recordBtn');
+  const playBtn = document.getElementById('playMyBtn');
+
+  if(mediaRecorder && mediaRecorder.state === 'recording'){
+    mediaRecorder.stop();
+    recordBtn.textContent = '🎤 录我的发音';
+    return;
+  }
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+      if(myAudioURL) URL.revokeObjectURL(myAudioURL);
+      myAudioURL = URL.createObjectURL(blob);
+      playBtn.hidden = false;
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRecorder.start();
+    recordBtn.textContent = '⏹ 停止录音';
+  }catch(err){
+    alert('无法使用麦克风：'+err.message+'。请用 localhost 或 https 打开。');
+  }
+}
+
+document.getElementById('recordBtn').addEventListener('click', toggleRecord);
+document.getElementById('playMyBtn').addEventListener('click', ()=>{
+  if(myAudioURL){
+    new Audio(myAudioURL).play();
+  }
+});
+
+// ---------- 练习状态 ----------
+let questions = [];
+let current = 0;
+let currentQuestion = null;
+
+document.getElementById('startBtn').addEventListener('click', startPractice);
+document.getElementById('speakBtn').addEventListener('click', ()=>{
+  if(currentQuestion) speakEn(currentQuestion.item.en);
+});
+document.getElementById('submitBtn').addEventListener('click', checkAnswer);
+document.getElementById('nextBtn').addEventListener('click', nextQuestion);
+document.getElementById('answer').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') checkAnswer();
+});
+
+function pickQuestions(){
+  const wordCount = parseInt(document.getElementById('wordCount').value) || 5;
+  const phraseCount = parseInt(document.getElementById('phraseCount').value) || 3;
+  const selectedGroup = document.getElementById('groupSelect').value;
+
+  // 过滤出当前组的词汇
+  const groupItems = lexicon.filter(i => i.group === selectedGroup);
+  const words = shuffle(groupItems.filter(i=>i.type==='word'));
+  const phrases = shuffle(groupItems.filter(i=>i.type==='phrase'));
+
+  // 取指定数量，如果不够就全部取
+  const selected = [
+    ...words.slice(0, wordCount),
+    ...phrases.slice(0, phraseCount)
+  ];
+
+  // 如果数量不足，提示
+  if(selected.length === 0){
+    alert('当前组没有词汇，请先编辑词库或选择其他组。');
+    return [];
+  }
+
+  return shuffle(selected).map(item=>{
+    let type;
+    if(item.type === 'word'){
+      const types = ['zh2en','en2zh','blank'];
+      type = types[Math.floor(Math.random()*types.length)];
+    } else {
+      type = Math.random() < 0.5 ? 'zh2en' : 'en2zh';
+    }
+    return {item, type, blanked: makeBlank(item.en)};
+  });
+}
+
+function makeBlank(en){
+  const letterPositions = [];
+  for(let i=0;i<en.length;i++){
+    if(/[a-zA-Z]/.test(en[i])) letterPositions.push(i);
+  }
+
+  if(letterPositions.length < 2) return en;
+
+  const hideCount = Math.max(1, Math.min(3, Math.floor(letterPositions.length/2)));
+  const hidePositions = new Set();
+
+  while(hidePositions.size < hideCount){
+    hidePositions.add(letterPositions[Math.floor(Math.random()*letterPositions.length)]);
+  }
+
+  let out = '';
+  for(let i=0;i<en.length;i++){
+    out += hidePositions.has(i) ? '_' : en[i];
+  }
+  return out;
+}
+
+function startPractice(){
+  questions = pickQuestions();
+  if(questions.length === 0) return;
+  current = 0;
+  document.getElementById('setup').hidden = true;
+  document.getElementById('practice').hidden = false;
+  showQuestion();
+}
+
+function showQuestion(){
+  const q = questions[current];
+  currentQuestion = q;
+
+  const promptEl = document.getElementById('prompt');
+  const answerInput = document.getElementById('answer');
+  const feedback = document.getElementById('feedback');
+  const nextBtn = document.getElementById('nextBtn');
+  const playMyBtn = document.getElementById('playMyBtn');
+
+  answerInput.value = '';
+  feedback.textContent = '';
+  feedback.className = 'feedback';
+  nextBtn.hidden = true;
+  playMyBtn.hidden = true;
+
+  if(myAudioURL){
+    URL.revokeObjectURL(myAudioURL);
+    myAudioURL = null;
+  }
+  document.getElementById('recordBtn').textContent = '🎤 录我的发音';
+
+  if(q.type === 'zh2en'){
+    promptEl.innerHTML = `请写出英文：<span class="en">${q.item.zh}</span>`;
+  } else if(q.type === 'en2zh'){
+    promptEl.innerHTML = `请写出中文意思：<span class="en">${q.item.en}</span>`;
+  } else if(q.type === 'blank'){
+    promptEl.innerHTML = `请补全英文：<span class="en">${q.blanked}</span>`;
+  }
+
+  document.getElementById('progress').textContent = `第 ${current+1} / ${questions.length} 题`;
+  answerInput.focus();
+}
+
+function checkAnswer(){
+  const q = currentQuestion;
+  const input = document.getElementById('answer').value;
+  const feedback = document.getElementById('feedback');
+  const nextBtn = document.getElementById('nextBtn');
+
+  let ok = false;
+
+  if(q.type === 'zh2en' || q.type === 'blank'){
+    ok = normalEn(input) === normalEn(q.item.en);
+  } else if(q.type === 'en2zh'){
+    ok = normalZh(input) === normalZh(q.item.zh);
+  }
+
+  if(ok){
+    feedback.textContent = '✅ 正确！';
+    feedback.className = 'feedback ok';
+  } else {
+    feedback.innerHTML = `❌ 错误。正确答案：<span class="en">${q.item.en}</span> / ${q.item.zh}`;
+    feedback.className = 'feedback bad';
+    speakEn(q.item.en);
+  }
+
+  nextBtn.hidden = false;
+  document.getElementById('submitBtn').blur();
+}
+
+function nextQuestion(){
+  current++;
+  if(current >= questions.length){
+    document.getElementById('practice').hidden = true;
+    document.getElementById('setup').hidden = false;
+    alert('🎉 本轮完成！');
+    return;
+  }
+  showQuestion();
+}
+</script>
+</body>
+</html>

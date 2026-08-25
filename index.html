@@ -163,7 +163,18 @@ function speakEn(text){
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'en-US';
-  u.rate = 0.9;
+  u.rate = 0.7;
+
+  // 尝试选择一个清晰的英语语音
+  const voices = window.speechSynthesis.getVoices();
+  if(voices.length > 0){
+    const preferred = voices.find(v =>
+      /en[-_]US/i.test(v.lang) &&
+      /Google|Microsoft|Samantha|Zira|Female|Natural/i.test(v.name)
+    ) || voices.find(v => /en[-_]US/i.test(v.lang));
+    if(preferred) u.voice = preferred;
+  }
+
   speechSynthesis.speak(u);
 }
 

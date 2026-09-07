@@ -109,7 +109,7 @@
 </div>
 
 <script>
-// ---------- 存储键 ----------
+// ---------- 存储 ----------
 const STORE_M1 = 'lexicon_m1_v1';
 const STORE_M2 = 'lexicon_m2_v1';
 const STORE_M3 = 'lexicon_m3_v1';
@@ -143,13 +143,8 @@ function loadRaw(key, def){
   }catch(e){}
   return def;
 }
-
-function saveData(key, data){
-  localStorage.setItem(key, JSON.stringify(data));
-}
-function saveRaw(key, raw){
-  localStorage.setItem(key, raw);
-}
+function saveData(key, data){ localStorage.setItem(key, JSON.stringify(data)); }
+function saveRaw(key, raw){ localStorage.setItem(key, raw); }
 
 function populateSelect(selId, lexicon){
   const sel = document.getElementById(selId);
@@ -171,7 +166,7 @@ function fillEditor(editorId, lexicon){
   document.getElementById(editorId).value = lexicon.map(i=>`${i.group} | ${i.type} | ${i.en} | ${i.zh}`).join('\n');
 }
 
-function saveLexiconFromEditor(editorId, storeKey, lexiconName){
+function saveLexiconFromEditor(editorId, storeKey, moduleName){
   const text = document.getElementById(editorId).value.trim();
   const lines = text.split('\n').map(s=>s.trim()).filter(Boolean);
   const newLex = [];
@@ -182,16 +177,16 @@ function saveLexiconFromEditor(editorId, storeKey, lexiconName){
     }
   }
   if(newLex.length){
-    if(lexiconName === 'm1') lexiconM1 = newLex, saveData(STORE_M1, newLex), populateSelect('m1GroupSelect', lexiconM1);
-    if(lexiconName === 'm2') lexiconM2 = newLex, saveData(STORE_M2, newLex), populateSelect('m2GroupSelect', lexiconM2);
-    if(lexiconName === 'm3') lexiconM3 = newLex, saveData(STORE_M3, newLex), populateSelect('m3GroupSelect', lexiconM3);
+    if(moduleName === 'm1'){ lexiconM1 = newLex; saveData(STORE_M1, newLex); populateSelect('m1GroupSelect', lexiconM1); }
+    if(moduleName === 'm2'){ lexiconM2 = newLex; saveData(STORE_M2, newLex); populateSelect('m2GroupSelect', lexiconM2); }
+    if(moduleName === 'm3'){ lexiconM3 = newLex; saveData(STORE_M3, newLex); populateSelect('m3GroupSelect', lexiconM3); }
     alert('已保存 '+newLex.length+' 条');
   } else {
     alert('格式不正确');
   }
 }
 
-// 初始化界面
+// 初始化
 fillEditor('m1Lexicon', lexiconM1);
 fillEditor('m2Lexicon', lexiconM2);
 fillEditor('m3Lexicon', lexiconM3);
@@ -377,7 +372,10 @@ function startPractice(module){
   }
   if(questions.length===0) return;
   current = 0;
-  document.getElementById('setup').hidden = true;
+  // 修复：隐藏三个模块设置区，显示练习区
+  document.getElementById('module1').hidden = true;
+  document.getElementById('module2').hidden = true;
+  document.getElementById('module3').hidden = true;
   document.getElementById('practice').hidden = false;
   showQuestion();
 }
